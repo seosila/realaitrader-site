@@ -2391,7 +2391,7 @@ def collection_schema(category):
     })
 
 
-def render_head(title, description, canonical, og_type="website", extra_schema="", image=None, include_website_schema=False):
+def render_head(title, description, canonical, og_type="website", extra_schema="", image=None, include_website_schema=False, extra_head=""):
     if not canonical.startswith(f"{SITE_URL}/"):
         raise ValueError(f"Canonical URL must use {SITE_URL}: {canonical}")
     if not canonical.endswith("/"):
@@ -2405,6 +2405,7 @@ def render_head(title, description, canonical, og_type="website", extra_schema="
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    {extra_head}
     <title>{escape(title)}</title>
     <meta name="description" content="{escape(description)}">
     <link rel="canonical" href="{canonical}">
@@ -2551,7 +2552,7 @@ def render_homepage():
     news_articles = recent_articles(ARTICLES_BY_CATEGORY["news"], 2)
 
     return f'''
-{render_head('Real AI Trader | AI Trading, Algorithms & Market Technology', SITE_DESCRIPTION, f'{SITE_URL}/', og_type='website', extra_schema=organization_schema(), image=featured_article["image"], include_website_schema=True)}
+{render_head('Real AI Trader | AI Trading, Algorithms & Market Technology', SITE_DESCRIPTION, f'{SITE_URL}/', og_type='website', extra_schema=organization_schema(), image=featured_article["image"], include_website_schema=True, extra_head='<meta name="google-site-verification" content="b3wqJOlPsu1elQedZsYbpKvQUkwG-wJzFnuy2_0-Fbo">')}
 {render_header('/')}
     <main>
       <section class="home-intro">

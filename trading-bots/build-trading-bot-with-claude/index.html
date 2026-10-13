@@ -1,0 +1,371 @@
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>How to Create a Trading Bot with Claude Code | Real AI Trader</title>
+    <meta name="description" content="Build a simple Python trading bot with Claude Code and Alpaca paper trading. Follow setup, moving-average signals, safety checks, tests, and API steps.">
+    <link rel="canonical" href="https://realaitrader.com/trading-bots/build-trading-bot-with-claude/">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="How to Create a Trading Bot with Claude Code | Real AI Trader">
+    <meta property="og:description" content="Build a simple Python trading bot with Claude Code and Alpaca paper trading. Follow setup, moving-average signals, safety checks, tests, and API steps.">
+    <meta property="og:url" content="https://realaitrader.com/trading-bots/build-trading-bot-with-claude/">
+    <meta property="og:image" content="https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&amp;fit=crop&amp;w=1200&amp;q=80">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="How to Create a Trading Bot with Claude Code | Real AI Trader">
+    <meta name="twitter:description" content="Build a simple Python trading bot with Claude Code and Alpaca paper trading. Follow setup, moving-average signals, safety checks, tests, and API steps.">
+    <meta name="twitter:image" content="https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&amp;fit=crop&amp;w=1200&amp;q=80">
+    <link rel="stylesheet" href="../../styles.css">
+    <script defer src="../../script.js"></script>
+    <script type="application/ld+json">{"@context": "https://schema.org", "@type": "Article", "headline": "How to Create a Trading Bot With Claude Code (Paper Trading First)", "description": "Build a simple Python trading bot with Claude Code and Alpaca paper trading. Follow setup, moving-average signals, safety checks, tests, and API steps.", "datePublished": "2026-10-13", "dateModified": "2026-10-13", "author": {"@type": "Organization", "name": "Real AI Trader Editorial Team", "url": "https://realaitrader.com/author/real-ai-trader-editorial-team/"}, "publisher": {"@type": "Organization", "name": "Real AI Trader", "url": "https://realaitrader.com"}, "mainEntityOfPage": {"@type": "WebPage", "@id": "https://realaitrader.com/trading-bots/build-trading-bot-with-claude/"}, "image": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80", "articleSection": "Trading Bots", "keywords": "how to create a trading bot with Claude, Claude Code trading bot, AI-assisted trading bot development, paper trading"}</script><script type="application/ld+json">{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://realaitrader.com/"}, {"@type": "ListItem", "position": 2, "name": "Trading Bots", "item": "https://realaitrader.com/trading-bots/"}, {"@type": "ListItem", "position": 3, "name": "How to Create a Trading Bot With Claude Code (Paper Trading First)", "item": "https://realaitrader.com/trading-bots/build-trading-bot-with-claude/"}]}</script>
+  </head>
+
+
+  <body>
+    <header class="site-header">
+      <div class="container header-inner">
+        <a class="brand" href="/" aria-label="Real AI Trader home">
+          <span class="brand-mark" aria-hidden="true">RAI</span>
+          <span class="brand-text">Real AI Trader</span>
+        </a>
+        <span class="brand-tagline">AI Trading, Algorithms &amp; Market Technology</span>
+        <button class="nav-toggle" type="button" aria-label="Toggle navigation" aria-expanded="false" aria-controls="primary-navigation">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+      <div class="nav-row">
+        <nav class="site-nav container" id="primary-navigation" aria-label="Primary navigation">
+          <a class="nav-link " href="/ai-trading/">AI Trading</a><a class="nav-link active" href="/trading-bots/" aria-current="page">Trading Bots</a><a class="nav-link " href="/algorithmic-trading/">Algorithmic Trading</a><a class="nav-link " href="/crypto-ai/">Crypto & AI</a><a class="nav-link " href="/trading-strategies/">Trading Strategies</a><a class="nav-link " href="/trading-technology/">Trading Technology</a><a class="nav-link " href="/reviews/">Reviews</a><a class="nav-link " href="/research/">Research</a><a class="nav-link " href="/news/">News</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="article-page">
+      <article>
+        <header class="article-header">
+          <div class="container narrow">
+            <nav class="breadcrumbs" aria-label="Breadcrumb">
+              <a href="/">Home</a>
+              <span> / </span>
+              <a href="/trading-bots/">Trading Bots</a>
+              <span> / </span>
+              <span>How to Create a Trading Bot With Claude Code (Paper Trading First)</span>
+            </nav>
+            <div class="eyebrow accent"><a href="/trading-bots/">Trading Bots</a></div>
+            <h1>How to Create a Trading Bot With Claude Code (Paper Trading First)</h1>
+            <p class="intro">Use Claude Code as a development assistant to plan, build, test, and paper trade a trading bot without confusing generated code with a live-ready system.</p>
+            <div class="article-meta">
+              <span>Published <time datetime="2026-10-13">2026-10-13</time></span>
+              <span>Updated <time datetime="2026-10-13">2026-10-13</time></span>
+              <span>By <a href="/author/real-ai-trader-editorial-team/">Real AI Trader Editorial Team</a></span>
+            </div>
+          </div>
+        </header>
+
+        <div class="container narrow article-body-wrap">
+          <img class="article-featured-image" src="https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80" alt="Computer hardware representing the components of a software development project" width="1200" height="700" loading="eager">
+          <div class="article-body long-form">
+            <section class="article-section"><p>You can use Claude Code to help build a trading bot without asking it to generate a large, opaque system in one prompt. A better first project is a small Python program with one understandable strategy rule, an explicit paper-trading boundary, and tests you can run before allowing it to submit even a simulated order.</p><p>In this tutorial, you will build a starter bot that requests recent one-minute stock bars from Alpaca, calculates a simple moving-average crossover, prints a signal, and—with a separate command-line flag—can submit a one-share order to an Alpaca paper-trading account. The default run only reports a signal; it does not send an order. The trading client is constructed with <code>paper=True</code>, and the script refuses to run unless <code>PAPER_TRADING=true</code> is set.</p><p>This is a software-development exercise, not a profitable strategy. Claude Code helps write and review code; the example bot itself uses a deterministic moving-average rule. It does not ask a language model to make live trading decisions.</p></section><section class="article-section"><h2>What you will build</h2><p>The minimal project contains:</p><ul><li><code>paper_bot.py</code> — fetches recent bars, calculates a crossover signal, and optionally submits one-share paper orders.</li><li><code>.env</code> — stores your paper-account API credentials outside the source code.</li><li><code>.gitignore</code> — prevents local credentials and state files from being committed.</li><li><code>bot_state.json</code> — records the most recently processed bar and whether this demo opened a one-share position.</li><li><code>test_signals.py</code> — tests the crossover function without connecting to a broker.</li></ul><p>The bot processes one check each time you run it. It does not run continuously, schedule itself, or manage a complete portfolio. Keep that small scope deliberate: it makes the code easier to inspect and the first failures easier to diagnose.</p></section><section class="article-section"><h2>1. Install Claude Code and prepare Python</h2><p>Follow Anthropic&#x27;s current <a href="https://code.claude.com/docs/en/getting-started" rel="noopener noreferrer">Claude Code setup guide</a> for your operating system. After installation, open a terminal in the folder where you want the project and confirm that the <code>claude</code> command starts correctly. Claude Code can inspect project files, explain code, propose edits, and help run tests, but you should review each change instead of approving a large project rewrite without inspection.</p><p>Install Python 3.10 or newer. In Windows PowerShell, create a project folder and virtual environment:</p><pre><code class="language-powershell">mkdir claude-paper-bot
+cd claude-paper-bot
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install alpaca-py python-dotenv pandas pytest</code></pre><p>On macOS or Linux, use <code>python3 -m venv .venv</code> and the virtual environment&#x27;s Python executable under <code>.venv/bin/python</code> instead. Use the same interpreter for installation, tests, and running the script so that the packages are installed into the environment the project actually uses.</p></section><section class="article-section"><h2>2. Create a paper-only Alpaca account and API keys</h2><p>Alpaca provides a paper-trading environment for testing code with simulated orders. Its paper-only account documentation says the account uses separate paper credentials and that paper-account users are limited to IEX market data. Read the current <a href="https://docs.alpaca.markets/us/docs/paper-trading" rel="noopener noreferrer">paper-trading guide</a> and <a href="https://docs.alpaca.markets/us/docs/authentication" rel="noopener noreferrer">authentication reference</a> before setting up credentials.</p><p>Create a paper-only account, then generate the paper API key and secret in the dashboard. Do not copy live-account credentials into this project. The example below is explicitly configured to use paper trading, but keeping paper and live credentials separate is still essential.</p><p>Create a file named <code>.env</code> in the project folder:</p><pre><code class="language-dotenv">ALPACA_API_KEY=PASTE_YOUR_PAPER_KEY_HERE
+ALPACA_SECRET_KEY=PASTE_YOUR_PAPER_SECRET_HERE
+PAPER_TRADING=true</code></pre><p>Replace the two placeholder values locally. Do not paste your real keys into Claude Code prompts, source files, screenshots, error reports, or chat messages. The script loads the values from <code>.env</code> at runtime.</p><p>Create <code>.gitignore</code> with:</p><pre><code class="language-gitignore">.env
+.venv/
+__pycache__/
+.pytest_cache/
+bot_state.json</code></pre><p>If <code>.env</code> was ever committed to a repository, deleting it in a later commit is not enough: revoke or rotate the exposed credentials.</p></section><section class="article-section"><h2>3. Define the rule before writing the bot</h2><p>The example uses a five-period and twenty-period simple moving average (SMA) calculated from one-minute closing prices. It reports <code>BUY</code> when the shorter average crosses from at-or-below the longer average to above it. It reports <code>SELL</code> for the inverse crossover. Otherwise, it reports <code>HOLD</code>.</p><p>Those numbers are teaching parameters, not optimized values. A moving-average crossover can produce false signals, react late, and perform poorly after costs. The purpose is to demonstrate the data-to-signal-to-paper-order path, not to recommend a strategy.</p><p>The program must also follow explicit boundaries:</p><ul><li>It processes only one symbol per run, defaulting to <code>SPY</code>.</li><li>It uses one-minute bars from the IEX feed and conservatively excludes the most recently returned bar, which may still be forming.</li><li>It never shorts. A <code>SELL</code> signal only closes the single long share this demo previously recorded as opening.</li><li>It never adds to an existing position. If the account already holds the symbol unexpectedly, the program stops rather than guessing who owns that position.</li><li>It never connects to a live trading endpoint. The trading client is created with <code>paper=True</code> in code, and the environment flag must equal <code>true</code>.</li><li>It does not add stop orders, continuous scheduling, or automatic deployment.</li></ul><p>These restrictions are intentionally conservative. A real trading system would need more complete portfolio reconciliation, fill handling, order-state recovery, limits, and monitoring.</p></section><section class="article-section"><h2>4. Create <code>paper_bot.py</code></h2><p>Use the following as the first implementation. It uses Alpaca&#x27;s official Python SDK to retrieve historical bars and, only when explicitly requested, submit a paper order. See the official <a href="https://alpaca.markets/sdks/python/api_reference/data/stock/requests.html" rel="noopener noreferrer">stock-bars request reference</a> and <a href="https://docs.alpaca.markets/us/docs/working-with-orders" rel="noopener noreferrer">order examples</a> if the SDK changes.</p><pre><code class="language-python">import argparse
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+from dotenv import load_dotenv
+from alpaca.data.enums import DataFeed
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest
+from alpaca.data.timeframe import TimeFrame
+from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.requests import MarketOrderRequest
+
+FAST = 5
+SLOW = 20
+ORDER_QTY = 1
+ORDER_POLL_TIMEOUT_SECONDS = 30
+ORDER_POLL_INTERVAL_SECONDS = 1
+STATE_PATH = Path(&quot;bot_state.json&quot;)
+
+
+def crossover_signal(closes, fast=FAST, slow=SLOW):
+    &quot;&quot;&quot;Return BUY, SELL, or HOLD from completed closing prices.&quot;&quot;&quot;
+    if fast &lt; 1 or slow &lt;= fast:
+        raise ValueError(&quot;Require 1 &lt;= fast &lt; slow&quot;)
+    if len(closes) &lt; slow + 1:
+        raise ValueError(f&quot;Need at least {slow + 1} completed closes&quot;)
+
+    prior_fast = sum(closes[-fast-1:-1]) / fast
+    prior_slow = sum(closes[-slow-1:-1]) / slow
+    current_fast = sum(closes[-fast:]) / fast
+    current_slow = sum(closes[-slow:]) / slow
+
+    if prior_fast &lt;= prior_slow and current_fast &gt; current_slow:
+        return &quot;BUY&quot;
+    if prior_fast &gt;= prior_slow and current_fast &lt; current_slow:
+        return &quot;SELL&quot;
+    return &quot;HOLD&quot;
+
+
+def read_state():
+    if not STATE_PATH.exists():
+        return {&quot;last_processed_bar&quot;: None, &quot;demo_position_open&quot;: False}
+    try:
+        return json.loads(STATE_PATH.read_text(encoding=&quot;utf-8&quot;))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f&quot;Cannot read {STATE_PATH}: {exc}&quot;) from exc
+
+
+def write_state(last_bar, position_open):
+    data = {
+        &quot;last_processed_bar&quot;: last_bar,
+        &quot;demo_position_open&quot;: bool(position_open),
+    }
+    temporary = STATE_PATH.with_suffix(&quot;.tmp&quot;)
+    temporary.write_text(json.dumps(data, indent=2), encoding=&quot;utf-8&quot;)
+    temporary.replace(STATE_PATH)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=&quot;One-pass paper-trading tutorial bot&quot;)
+    parser.add_argument(&quot;--symbol&quot;, default=&quot;SPY&quot;, help=&quot;US stock/ETF ticker, e.g. SPY&quot;)
+    parser.add_argument(
+        &quot;--submit-paper-order&quot;,
+        action=&quot;store_true&quot;,
+        help=&quot;Allow one-share orders in the paper account; without this, no order is sent&quot;,
+    )
+    args = parser.parse_args()
+    symbol = args.symbol.upper().strip()
+    if not re.fullmatch(r&quot;[A-Z][A-Z0-9.]{0,9}&quot;, symbol):
+        raise SystemExit(&quot;Invalid symbol format&quot;)
+
+    load_dotenv()
+    api_key = os.getenv(&quot;ALPACA_API_KEY&quot;, &quot;&quot;).strip()
+    secret_key = os.getenv(&quot;ALPACA_SECRET_KEY&quot;, &quot;&quot;).strip()
+    if os.getenv(&quot;PAPER_TRADING&quot;, &quot;&quot;).strip().lower() != &quot;true&quot;:
+        raise SystemExit(&quot;ABORT: this tutorial only runs with PAPER_TRADING=true&quot;)
+    if not api_key or not secret_key:
+        raise SystemExit(&quot;Missing ALPACA_API_KEY or ALPACA_SECRET_KEY in .env&quot;)
+
+    data_client = StockHistoricalDataClient(api_key, secret_key)
+    trading_client = TradingClient(api_key, secret_key, paper=True)
+    request = StockBarsRequest(
+        symbol_or_symbols=[symbol],
+        timeframe=TimeFrame.Minute,
+        limit=50,
+        feed=DataFeed.IEX,
+    )
+
+    response = data_client.get_stock_bars(request)
+    bars = sorted(response[symbol], key=lambda bar: bar.timestamp)
+    if len(bars) &lt; SLOW + 2:
+        raise SystemExit(&quot;Not enough bars returned; check the symbol, market session, and data access&quot;)
+
+    # Exclude the newest returned bar so the example does not use a bar
+    # that may still be forming.
+    completed_bars = bars[:-1]
+    closes = [float(bar.close) for bar in completed_bars]
+    signal = crossover_signal(closes)
+    bar_timestamp = completed_bars[-1].timestamp.isoformat()
+    last_close = closes[-1]
+
+    print(f&quot;Symbol: {symbol}&quot;)
+    print(f&quot;Last included bar: {bar_timestamp}&quot;)
+    print(f&quot;Last included close: {last_close:.2f}&quot;)
+    print(f&quot;Signal: {signal}&quot;)
+
+    state = read_state()
+    if state.get(&quot;last_processed_bar&quot;) == bar_timestamp:
+        print(&quot;This completed bar was already processed; no duplicate action taken.&quot;)
+        return
+
+    if signal == &quot;HOLD&quot;:
+        write_state(bar_timestamp, state.get(&quot;demo_position_open&quot;, False))
+        print(&quot;No crossover. No order sent.&quot;)
+        return
+
+    if not args.submit_paper_order:
+        print(&quot;Signal only. No order sent. Review the code before enabling paper orders.&quot;)
+        print(&quot;To allow a paper order on a future signal, add --submit-paper-order.&quot;)
+        return
+
+    clock = trading_client.get_clock()
+    if not clock.is_open:
+        raise SystemExit(&quot;Market is closed; no paper order sent&quot;)
+
+    positions = trading_client.get_all_positions()
+    current_position = next((p for p in positions if p.symbol == symbol), None)
+    position_open = bool(state.get(&quot;demo_position_open&quot;, False))
+
+    if signal == &quot;BUY&quot;:
+        if position_open or current_position is not None:
+            raise SystemExit(&quot;Position already exists or state disagrees; inspect the paper account before proceeding&quot;)
+        side = OrderSide.BUY
+    else:
+        if not position_open:
+            write_state(bar_timestamp, False)
+            print(&quot;SELL signal, but this demo has no recorded position to close. No order sent.&quot;)
+            return
+        if current_position is None or float(current_position.qty) != ORDER_QTY:
+            raise SystemExit(&quot;Position does not match the demo&#x27;s one-share state; no order sent&quot;)
+        if str(current_position.side).lower().split(&quot;.&quot;)[-1] != &quot;long&quot;:
+            raise SystemExit(&quot;Unexpected position side; no order sent&quot;)
+        side = OrderSide.SELL
+
+    client_order_id = f&quot;claude-{symbol.lower()}-{signal.lower()}-{completed_bars[-1].timestamp.strftime(&#x27;%Y%m%d%H%M&#x27;)}&quot;
+    order = trading_client.submit_order(
+        order_data=MarketOrderRequest(
+            symbol=symbol,
+            qty=ORDER_QTY,
+            side=side,
+            time_in_force=TimeInForce.DAY,
+            client_order_id=client_order_id,
+        )
+    )
+    print(f&quot;Paper order submitted: {order.id}&quot;)
+    print(f&quot;Client order ID: {client_order_id}&quot;)
+    deadline = time.monotonic() + ORDER_POLL_TIMEOUT_SECONDS
+    while time.monotonic() &lt; deadline:
+        order = trading_client.get_order_by_id(order.id)
+        order_status = str(order.status).lower().split(&quot;.&quot;)[-1]
+        filled_qty = float(order.filled_qty or 0)
+        print(f&quot;Order status: {order_status}; filled quantity: {filled_qty:g}&quot;)
+        if order_status == &quot;filled&quot;:
+            if filled_qty == ORDER_QTY:
+                next_position_state = signal == &quot;BUY&quot;
+                write_state(bar_timestamp, next_position_state)
+                print(&quot;Confirmed full one-share fill; demo position state saved.&quot;)
+            else:
+                print(
+                    &quot;The order reports filled, but its filled quantity does not match &quot;
+                    &quot;the one-share request. Inspect the paper account and reconcile &quot;
+                    &quot;the order before running the script again. No automatic retry &quot;
+                    &quot;was made.&quot;
+                )
+            return
+        if order_status in {&quot;rejected&quot;, &quot;canceled&quot;, &quot;expired&quot;} or filled_qty &gt; 0:
+            print(
+                &quot;The order was not confirmed as a full one-share fill. Inspect the &quot;
+                &quot;paper account and reconcile the order before running the script &quot;
+                &quot;again. No automatic retry was made.&quot;
+            )
+            return
+        remaining = deadline - time.monotonic()
+        if remaining &gt; 0:
+            time.sleep(min(ORDER_POLL_INTERVAL_SECONDS, remaining))
+    print(
+        &quot;Order status is still unresolved after the polling timeout. Inspect the &quot;
+        &quot;paper account and reconcile the order before running the script again. &quot;
+        &quot;No automatic retry was made.&quot;
+    )
+
+
+if __name__ == &quot;__main__&quot;:
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(&quot;Interrupted by user.&quot;, file=sys.stderr)
+        raise SystemExit(130)</code></pre><p>The script deliberately requires <code>--submit-paper-order</code> before submitting anything. If an API request times out, do not assume the order failed: inspect the paper account&#x27;s orders before trying again. The state file prevents processing the same completed bar twice after the state is saved, but it is not a substitute for checking broker order history after an uncertain network result.</p></section><section class="article-section"><h2>5. Test the signal function before connecting to the API</h2><p>Create <code>test_signals.py</code>:</p><pre><code class="language-python">from paper_bot import crossover_signal
+
+
+def test_buy_cross():
+    closes = [100.0] * 20 + [100.0, 100.0, 100.0, 100.0, 101.0]
+    assert crossover_signal(closes) == &quot;BUY&quot;
+
+
+def test_sell_cross():
+    closes = [100.0] * 20 + [100.0, 100.0, 100.0, 100.0, 99.0]
+    assert crossover_signal(closes) == &quot;SELL&quot;
+
+
+def test_no_cross():
+    assert crossover_signal([100.0] * 25) == &quot;HOLD&quot;</code></pre><p>Run the tests:</p><pre><code class="language-powershell">.\.venv\Scripts\python.exe -m pytest -q</code></pre><p>Expected result: three tests pass. If they fail, fix the signal calculation and rerun the tests before using any API key. These tests check the crossover function only; they do not verify market data quality, order handling, or profitability.</p></section><section class="article-section"><h2>6. Run the bot without orders first</h2><p>Run a signal-only pass:</p><pre><code class="language-powershell">.\.venv\Scripts\python.exe paper_bot.py --symbol SPY</code></pre><p>The program should print the symbol, timestamp of the last included bar, close, and one of <code>BUY</code>, <code>SELL</code>, or <code>HOLD</code>. Without <code>--submit-paper-order</code>, it will not place an order. If there are too few bars, if the symbol is unavailable, or if credentials are invalid, it should stop with an error instead of inventing a signal.</p><p>The signal may be <code>HOLD</code> most of the time. That is normal for a crossover rule: it only returns <code>BUY</code> or <code>SELL</code> when the fast average crosses the slow average between the prior and current windows. A signal is not a prediction of future returns.</p></section><section class="article-section"><h2>7. Allow a one-share paper order only after review</h2><p>Only after reviewing the code and seeing the test suite pass, you can run:</p><pre><code class="language-powershell">.\.venv\Scripts\python.exe paper_bot.py --symbol SPY --submit-paper-order</code></pre><p>This option may submit a one-share <strong>paper</strong> market order if the latest completed-bar signal, account position, recorded demo state, and market-open check all permit it. After submission, the script polls the order for up to 30 seconds and updates <code>bot_state.json</code> only when the broker reports a full one-share fill. A rejection, cancellation, partial fill, inconsistent filled quantity, or timeout leaves the intended position state unsaved. Inspect the paper account and reconcile the order before running the script again; the example never retries an uncertain order automatically.</p><p>Use a dedicated paper account with no unrelated positions in the symbol. The example intentionally stops if it finds an unexpected position or a mismatch between its small local state file and the broker account. Resolve any mismatch manually before running it again. Do not schedule the script to run unattended at this stage, and do not change <code>paper=True</code> to <code>paper=False</code>.</p></section><section class="article-section"><h2>8. Use Claude Code as a developer, not as the trading authority</h2><p>Once you have created the three files, start Claude Code from the project directory. Ask it to inspect the project and review the implementation before asking for new features. Anthropic&#x27;s <a href="https://code.claude.com/docs/en/getting-started" rel="noopener noreferrer">Claude Code documentation</a> describes setup and project sessions; the <a href="https://code.claude.com/docs/en/cli-usage" rel="noopener noreferrer">CLI reference</a> documents command-line usage.</p><p>Use prompts one stage at a time. For example:</p><p><strong>Prompt 1 — Inspect, don&#x27;t edit</strong></p><blockquote><p>Inspect <code>paper_bot.py</code>, <code>test_signals.py</code>, <code>.env.example</code> if present, and <code>.gitignore</code>. Explain the control flow, identify possible API or state-handling bugs, and list tests that are missing. Do not edit files, read secret values, connect to Alpaca, or submit orders.</p></blockquote><p><strong>Prompt 2 — Add tests only</strong></p><blockquote><p>Add unit tests for the crossover function&#x27;s boundary conditions and invalid input. Do not change <code>paper_bot.py</code> unless you first explain why a change is essential. Do not read <code>.env</code>, contact any API, submit orders, or execute trading actions. Run only the local test suite and summarize the results.</p></blockquote><p><strong>Prompt 3 — Review paper-order safety</strong></p><blockquote><p>Review the paper-order path for duplicate submissions, position mismatches, failed requests, and unsafe assumptions. Do not submit orders or access the account. Report findings first; wait for approval before changing code.</p></blockquote><p>Do not ask Claude to “make the bot profitable.” It can help implement and test defined logic, but it cannot manufacture a trading edge by changing parameters until a backtest looks good. Any change to strategy rules should be specified, tested on data not used to tune the rules, and documented.</p></section><section class="article-section"><h2>9. Understand what this prototype does not prove</h2><p>Alpaca describes paper trading as a simulation. Its paper environment does not fully reproduce factors such as market impact, latency slippage, queue position for limit orders, price improvement, regulatory fees, or dividends. IEX data is also not the same as a consolidated view of every US venue. Read the current <a href="https://docs.alpaca.markets/us/docs/paper-trading" rel="noopener noreferrer">paper-trading limitations</a> before interpreting results.</p><p>This starter does not implement a full backtester, stop-loss logic, portfolio-wide exposure limits, continuous scheduling, alerting, or robust order reconciliation. It also does not demonstrate positive expected returns. Those are separate engineering and research steps, not automatic upgrades to add without testing.</p><p>Before making a bot persistent, develop and test at least:</p><ul><li>Data checks for missing, duplicate, stale, and out-of-order bars.</li><li>Idempotent order handling and recovery after a timeout or restart.</li><li>Position and open-order reconciliation against the broker.</li><li>Explicit exposure and loss limits, with fail-closed behavior.</li><li>Logs, alerts, a manual stop mechanism, and an incident-recovery plan.</li><li>Backtests that account for fees, spread, slippage, and look-ahead bias.</li></ul><p>The detailed <a href="/trading-bots/trading-bot-architecture/">Trading Bot Architecture</a>, <a href="/trading-bots/trading-bot-apis/">Trading Bot APIs</a>, <a href="/trading-bots/testing-trading-bots/">Testing Trading Bots</a>, <a href="/trading-bots/trading-bot-risk-management/">Trading Bot Risk Management</a>, and <a href="/trading-bots/monitoring-trading-bots/">Monitoring Trading Bots</a> guides cover those additional topics.</p></section><section class="article-section"><h2>Frequently asked questions</h2><h3>Does Claude Code make the trading decisions?</h3><p>Not in this example. Claude Code helps write and review the program. The running script uses explicit moving-average rules written in Python. This separation makes it easier to inspect what generated each signal.</p><h3>Does the example place real orders?</h3><p>No. The code requires <code>PAPER_TRADING=true</code> and constructs the trading client with <code>paper=True</code>. It does not have a live-trading mode. Keep live credentials out of the project.</p><h3>Why use a moving-average crossover?</h3><p>It is a small, explainable example of turning market data into a deterministic signal. It is not selected because it is known to be profitable. A production strategy needs separate research and out-of-sample validation.</p><h3>Can I leave the script running automatically?</h3><p>Not yet. This tutorial runs one check per command. Before scheduling repeated checks, add and test stronger duplicate-order protection, reconciliation, monitoring, and a safe stop mechanism. Automatic scheduling should come after those controls, not before.</p><h3>Why can a paper result differ from live trading?</h3><p>Simulators make assumptions about fills and market behavior. Real execution can be affected by liquidity, spreads, queue position, latency, fees, and market impact. Paper trading is useful for debugging integration and operational behavior; it does not prove expected live returns.</p></section><section class="article-section"><h2>Conclusion: build a small bot you can explain</h2><p>The most useful way to create a trading bot with Claude Code is to make each step inspectable. Start with a defined rule, fetch and validate data, test the signal calculation offline, review every change, and keep orders disabled unless you deliberately enable the paper-trading path. Check the broker&#x27;s paper dashboard after any attempted order and investigate state mismatches instead of retrying blindly.</p><p>The point of the first version is not to earn money. It is to build software whose inputs, rules, outputs, and limitations you understand. Only expand it after the small version behaves as expected in tests and controlled paper runs.</p><p><em>Educational content only; not financial or investment advice. Trading involves risk, and neither AI-generated code nor simulated results guarantee profit.</em></p></section>
+          </div>
+          <aside class="contextual-links" aria-label="Further reading">
+            <p>Continue exploring <a href="/trading-bots/">Trading Bots</a> and <a href="/trading-bots/trading-bot-architecture/">Trading Bot Architecture: Data, Logic, Risk, and Execution</a>.</p>
+          </aside>
+          <aside class="financial-disclaimer"><p>Trading and investing involve risk. This article is for general educational purposes only and is not financial or investment advice. <a href="/disclaimer/">Read our full disclaimer</a>.</p></aside>
+        </div>
+
+        <aside class="container narrow related-articles">
+          <div class="section-heading-row">
+            <div>
+              <div class="eyebrow accent">Related</div>
+              <h2>Related Articles</h2>
+            </div>
+          </div>
+          <div class="related-list">
+        <article class="related-item">
+          <div class="eyebrow"><a href="/trading-bots/">Trading Bots</a></div>
+          <h3><a href="/trading-bots/trading-bot-architecture/">Trading Bot Architecture: Data, Logic, Risk, and Execution</a></h3>
+        </article>
+        <article class="related-item">
+          <div class="eyebrow"><a href="/trading-bots/">Trading Bots</a></div>
+          <h3><a href="/trading-bots/trading-bot-apis/">Trading Bot APIs: How Bots Connect to Brokers and Exchanges</a></h3>
+        </article>
+        <article class="related-item">
+          <div class="eyebrow"><a href="/trading-bots/">Trading Bots</a></div>
+          <h3><a href="/trading-bots/testing-trading-bots/">How to Test Trading Bots: Backtesting, Simulation, and Live Validation</a></h3>
+        </article></div>
+        </aside>
+
+        <section class="container narrow author-box">
+          <div class="author-card">
+            <div>
+              <div class="eyebrow accent">Author</div>
+              <h3><a href="/author/real-ai-trader-editorial-team/">Real AI Trader Editorial Team</a></h3>
+              <p>The Real AI Trader Editorial Team covers artificial intelligence, algorithmic trading, automated trading systems and financial technology.</p>
+            </div>
+          </div>
+        </section>
+      </article>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-grid">
+        <div>
+          <a class="brand footer-brand" href="/">
+            <span class="brand-mark" aria-hidden="true">RAI</span>
+            <span class="brand-text">Real AI Trader</span>
+          </a>
+          <p>Independent coverage of AI trading, algorithms and financial technology.</p>
+        </div>
+        <div>
+          <h2>Topics</h2>
+          <ul>
+            <li><a href="/ai-trading/">AI Trading</a></li><li><a href="/trading-bots/">Trading Bots</a></li><li><a href="/algorithmic-trading/">Algorithmic Trading</a></li><li><a href="/crypto-ai/">Crypto &amp; AI</a></li><li><a href="/trading-strategies/">Trading Strategies</a></li><li><a href="/trading-technology/">Trading Technology</a></li><li><a href="/research/">Research</a></li><li><a href="/news/">News</a></li>
+          </ul>
+        </div>
+        <div>
+          <h2>Publication</h2>
+          <ul>
+            <li><a href="/about/">About</a></li>
+            <li><a href="/contact/">Contact</a></li>
+            <li><a href="/disclaimer/">Disclaimer</a></li>
+            <li><a href="/privacy-policy/">Privacy Policy</a></li>
+            <li><a href="/terms/">Terms</a></li>
+            <li><a href="/author/real-ai-trader-editorial-team/">Editorial Team</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="container footer-bottom">
+        <p>© Real AI Trader. Educational content only.</p>
+      </div>
+    </footer>
+  </body>
+</html>
+

@@ -1560,6 +1560,436 @@ ARTICLES = [
         "meta_description": "Learn how to monitor trading bot data, orders, positions, APIs, and infrastructure, respond to incidents, manage changes, and recover safely."
     },
     {
+        "title": "How to Create a Trading Bot With Claude Code (Paper Trading First)",
+        "slug": "build-trading-bot-with-claude",
+        "category": "trading-bots",
+        "author": AUTHOR["name"],
+        "date": "2026-10-13",
+        "updated": "2026-10-13",
+        "excerpt": "Use Claude Code as a development assistant to plan, build, test, and paper trade a trading bot without confusing generated code with a live-ready system.",
+        "image": "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=80",
+        "image_alt": "Computer hardware representing the components of a software development project",
+        "allow_external_links": True,
+        "exclude_from_auto_related": True,
+        "tags": ["how to create a trading bot with Claude", "Claude Code trading bot", "AI-assisted trading bot development", "paper trading"],
+        "related_articles": ["trading-bot-architecture", "trading-bot-apis", "testing-trading-bots", "trading-bot-risk-management", "monitoring-trading-bots"],
+        "sections": [],
+        "markdown_body": r'''You can use Claude Code to help build a trading bot without asking it to generate a large, opaque system in one prompt. A better first project is a small Python program with one understandable strategy rule, an explicit paper-trading boundary, and tests you can run before allowing it to submit even a simulated order.
+
+In this tutorial, you will build a starter bot that requests recent one-minute stock bars from Alpaca, calculates a simple moving-average crossover, prints a signal, and—with a separate command-line flag—can submit a one-share order to an Alpaca paper-trading account. The default run only reports a signal; it does not send an order. The trading client is constructed with `paper=True`, and the script refuses to run unless `PAPER_TRADING=true` is set.
+
+This is a software-development exercise, not a profitable strategy. Claude Code helps write and review code; the example bot itself uses a deterministic moving-average rule. It does not ask a language model to make live trading decisions.
+
+## What you will build
+
+The minimal project contains:
+
+- `paper_bot.py` — fetches recent bars, calculates a crossover signal, and optionally submits one-share paper orders.
+- `.env` — stores your paper-account API credentials outside the source code.
+- `.gitignore` — prevents local credentials and state files from being committed.
+- `bot_state.json` — records the most recently processed bar and whether this demo opened a one-share position.
+- `test_signals.py` — tests the crossover function without connecting to a broker.
+
+The bot processes one check each time you run it. It does not run continuously, schedule itself, or manage a complete portfolio. Keep that small scope deliberate: it makes the code easier to inspect and the first failures easier to diagnose.
+
+## 1. Install Claude Code and prepare Python
+
+Follow Anthropic's current [Claude Code setup guide](https://code.claude.com/docs/en/getting-started) for your operating system. After installation, open a terminal in the folder where you want the project and confirm that the `claude` command starts correctly. Claude Code can inspect project files, explain code, propose edits, and help run tests, but you should review each change instead of approving a large project rewrite without inspection.
+
+Install Python 3.10 or newer. In Windows PowerShell, create a project folder and virtual environment:
+
+```powershell
+mkdir claude-paper-bot
+cd claude-paper-bot
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install alpaca-py python-dotenv pandas pytest
+```
+
+On macOS or Linux, use `python3 -m venv .venv` and the virtual environment's Python executable under `.venv/bin/python` instead. Use the same interpreter for installation, tests, and running the script so that the packages are installed into the environment the project actually uses.
+
+## 2. Create a paper-only Alpaca account and API keys
+
+Alpaca provides a paper-trading environment for testing code with simulated orders. Its paper-only account documentation says the account uses separate paper credentials and that paper-account users are limited to IEX market data. Read the current [paper-trading guide](https://docs.alpaca.markets/us/docs/paper-trading) and [authentication reference](https://docs.alpaca.markets/us/docs/authentication) before setting up credentials.
+
+Create a paper-only account, then generate the paper API key and secret in the dashboard. Do not copy live-account credentials into this project. The example below is explicitly configured to use paper trading, but keeping paper and live credentials separate is still essential.
+
+Create a file named `.env` in the project folder:
+
+```dotenv
+ALPACA_API_KEY=PASTE_YOUR_PAPER_KEY_HERE
+ALPACA_SECRET_KEY=PASTE_YOUR_PAPER_SECRET_HERE
+PAPER_TRADING=true
+```
+
+Replace the two placeholder values locally. Do not paste your real keys into Claude Code prompts, source files, screenshots, error reports, or chat messages. The script loads the values from `.env` at runtime.
+
+Create `.gitignore` with:
+
+```gitignore
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+bot_state.json
+```
+
+If `.env` was ever committed to a repository, deleting it in a later commit is not enough: revoke or rotate the exposed credentials.
+
+## 3. Define the rule before writing the bot
+
+The example uses a five-period and twenty-period simple moving average (SMA) calculated from one-minute closing prices. It reports `BUY` when the shorter average crosses from at-or-below the longer average to above it. It reports `SELL` for the inverse crossover. Otherwise, it reports `HOLD`.
+
+Those numbers are teaching parameters, not optimized values. A moving-average crossover can produce false signals, react late, and perform poorly after costs. The purpose is to demonstrate the data-to-signal-to-paper-order path, not to recommend a strategy.
+
+The program must also follow explicit boundaries:
+
+- It processes only one symbol per run, defaulting to `SPY`.
+- It uses one-minute bars from the IEX feed and conservatively excludes the most recently returned bar, which may still be forming.
+- It never shorts. A `SELL` signal only closes the single long share this demo previously recorded as opening.
+- It never adds to an existing position. If the account already holds the symbol unexpectedly, the program stops rather than guessing who owns that position.
+- It never connects to a live trading endpoint. The trading client is created with `paper=True` in code, and the environment flag must equal `true`.
+- It does not add stop orders, continuous scheduling, or automatic deployment.
+
+These restrictions are intentionally conservative. A real trading system would need more complete portfolio reconciliation, fill handling, order-state recovery, limits, and monitoring.
+
+## 4. Create `paper_bot.py`
+
+Use the following as the first implementation. It uses Alpaca's official Python SDK to retrieve historical bars and, only when explicitly requested, submit a paper order. See the official [stock-bars request reference](https://alpaca.markets/sdks/python/api_reference/data/stock/requests.html) and [order examples](https://docs.alpaca.markets/us/docs/working-with-orders) if the SDK changes.
+
+```python
+import argparse
+import json
+import os
+import re
+import sys
+import time
+from pathlib import Path
+
+from dotenv import load_dotenv
+from alpaca.data.enums import DataFeed
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest
+from alpaca.data.timeframe import TimeFrame
+from alpaca.trading.client import TradingClient
+from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.requests import MarketOrderRequest
+
+FAST = 5
+SLOW = 20
+ORDER_QTY = 1
+ORDER_POLL_TIMEOUT_SECONDS = 30
+ORDER_POLL_INTERVAL_SECONDS = 1
+STATE_PATH = Path("bot_state.json")
+
+
+def crossover_signal(closes, fast=FAST, slow=SLOW):
+    """Return BUY, SELL, or HOLD from completed closing prices."""
+    if fast < 1 or slow <= fast:
+        raise ValueError("Require 1 <= fast < slow")
+    if len(closes) < slow + 1:
+        raise ValueError(f"Need at least {slow + 1} completed closes")
+
+    prior_fast = sum(closes[-fast-1:-1]) / fast
+    prior_slow = sum(closes[-slow-1:-1]) / slow
+    current_fast = sum(closes[-fast:]) / fast
+    current_slow = sum(closes[-slow:]) / slow
+
+    if prior_fast <= prior_slow and current_fast > current_slow:
+        return "BUY"
+    if prior_fast >= prior_slow and current_fast < current_slow:
+        return "SELL"
+    return "HOLD"
+
+
+def read_state():
+    if not STATE_PATH.exists():
+        return {"last_processed_bar": None, "demo_position_open": False}
+    try:
+        return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"Cannot read {STATE_PATH}: {exc}") from exc
+
+
+def write_state(last_bar, position_open):
+    data = {
+        "last_processed_bar": last_bar,
+        "demo_position_open": bool(position_open),
+    }
+    temporary = STATE_PATH.with_suffix(".tmp")
+    temporary.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    temporary.replace(STATE_PATH)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="One-pass paper-trading tutorial bot")
+    parser.add_argument("--symbol", default="SPY", help="US stock/ETF ticker, e.g. SPY")
+    parser.add_argument(
+        "--submit-paper-order",
+        action="store_true",
+        help="Allow one-share orders in the paper account; without this, no order is sent",
+    )
+    args = parser.parse_args()
+    symbol = args.symbol.upper().strip()
+    if not re.fullmatch(r"[A-Z][A-Z0-9.]{0,9}", symbol):
+        raise SystemExit("Invalid symbol format")
+
+    load_dotenv()
+    api_key = os.getenv("ALPACA_API_KEY", "").strip()
+    secret_key = os.getenv("ALPACA_SECRET_KEY", "").strip()
+    if os.getenv("PAPER_TRADING", "").strip().lower() != "true":
+        raise SystemExit("ABORT: this tutorial only runs with PAPER_TRADING=true")
+    if not api_key or not secret_key:
+        raise SystemExit("Missing ALPACA_API_KEY or ALPACA_SECRET_KEY in .env")
+
+    data_client = StockHistoricalDataClient(api_key, secret_key)
+    trading_client = TradingClient(api_key, secret_key, paper=True)
+    request = StockBarsRequest(
+        symbol_or_symbols=[symbol],
+        timeframe=TimeFrame.Minute,
+        limit=50,
+        feed=DataFeed.IEX,
+    )
+
+    response = data_client.get_stock_bars(request)
+    bars = sorted(response[symbol], key=lambda bar: bar.timestamp)
+    if len(bars) < SLOW + 2:
+        raise SystemExit("Not enough bars returned; check the symbol, market session, and data access")
+
+    # Exclude the newest returned bar so the example does not use a bar
+    # that may still be forming.
+    completed_bars = bars[:-1]
+    closes = [float(bar.close) for bar in completed_bars]
+    signal = crossover_signal(closes)
+    bar_timestamp = completed_bars[-1].timestamp.isoformat()
+    last_close = closes[-1]
+
+    print(f"Symbol: {symbol}")
+    print(f"Last included bar: {bar_timestamp}")
+    print(f"Last included close: {last_close:.2f}")
+    print(f"Signal: {signal}")
+
+    state = read_state()
+    if state.get("last_processed_bar") == bar_timestamp:
+        print("This completed bar was already processed; no duplicate action taken.")
+        return
+
+    if signal == "HOLD":
+        write_state(bar_timestamp, state.get("demo_position_open", False))
+        print("No crossover. No order sent.")
+        return
+
+    if not args.submit_paper_order:
+        print("Signal only. No order sent. Review the code before enabling paper orders.")
+        print("To allow a paper order on a future signal, add --submit-paper-order.")
+        return
+
+    clock = trading_client.get_clock()
+    if not clock.is_open:
+        raise SystemExit("Market is closed; no paper order sent")
+
+    positions = trading_client.get_all_positions()
+    current_position = next((p for p in positions if p.symbol == symbol), None)
+    position_open = bool(state.get("demo_position_open", False))
+
+    if signal == "BUY":
+        if position_open or current_position is not None:
+            raise SystemExit("Position already exists or state disagrees; inspect the paper account before proceeding")
+        side = OrderSide.BUY
+    else:
+        if not position_open:
+            write_state(bar_timestamp, False)
+            print("SELL signal, but this demo has no recorded position to close. No order sent.")
+            return
+        if current_position is None or float(current_position.qty) != ORDER_QTY:
+            raise SystemExit("Position does not match the demo's one-share state; no order sent")
+        if str(current_position.side).lower().split(".")[-1] != "long":
+            raise SystemExit("Unexpected position side; no order sent")
+        side = OrderSide.SELL
+
+    client_order_id = f"claude-{symbol.lower()}-{signal.lower()}-{completed_bars[-1].timestamp.strftime('%Y%m%d%H%M')}"
+    order = trading_client.submit_order(
+        order_data=MarketOrderRequest(
+            symbol=symbol,
+            qty=ORDER_QTY,
+            side=side,
+            time_in_force=TimeInForce.DAY,
+            client_order_id=client_order_id,
+        )
+    )
+    print(f"Paper order submitted: {order.id}")
+    print(f"Client order ID: {client_order_id}")
+    deadline = time.monotonic() + ORDER_POLL_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        order = trading_client.get_order_by_id(order.id)
+        order_status = str(order.status).lower().split(".")[-1]
+        filled_qty = float(order.filled_qty or 0)
+        print(f"Order status: {order_status}; filled quantity: {filled_qty:g}")
+        if order_status == "filled":
+            if filled_qty == ORDER_QTY:
+                next_position_state = signal == "BUY"
+                write_state(bar_timestamp, next_position_state)
+                print("Confirmed full one-share fill; demo position state saved.")
+            else:
+                print(
+                    "The order reports filled, but its filled quantity does not match "
+                    "the one-share request. Inspect the paper account and reconcile "
+                    "the order before running the script again. No automatic retry "
+                    "was made."
+                )
+            return
+        if order_status in {"rejected", "canceled", "expired"} or filled_qty > 0:
+            print(
+                "The order was not confirmed as a full one-share fill. Inspect the "
+                "paper account and reconcile the order before running the script "
+                "again. No automatic retry was made."
+            )
+            return
+        remaining = deadline - time.monotonic()
+        if remaining > 0:
+            time.sleep(min(ORDER_POLL_INTERVAL_SECONDS, remaining))
+    print(
+        "Order status is still unresolved after the polling timeout. Inspect the "
+        "paper account and reconcile the order before running the script again. "
+        "No automatic retry was made."
+    )
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Interrupted by user.", file=sys.stderr)
+        raise SystemExit(130)
+```
+
+The script deliberately requires `--submit-paper-order` before submitting anything. If an API request times out, do not assume the order failed: inspect the paper account's orders before trying again. The state file prevents processing the same completed bar twice after the state is saved, but it is not a substitute for checking broker order history after an uncertain network result.
+
+## 5. Test the signal function before connecting to the API
+
+Create `test_signals.py`:
+
+```python
+from paper_bot import crossover_signal
+
+
+def test_buy_cross():
+    closes = [100.0] * 20 + [100.0, 100.0, 100.0, 100.0, 101.0]
+    assert crossover_signal(closes) == "BUY"
+
+
+def test_sell_cross():
+    closes = [100.0] * 20 + [100.0, 100.0, 100.0, 100.0, 99.0]
+    assert crossover_signal(closes) == "SELL"
+
+
+def test_no_cross():
+    assert crossover_signal([100.0] * 25) == "HOLD"
+```
+
+Run the tests:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
+Expected result: three tests pass. If they fail, fix the signal calculation and rerun the tests before using any API key. These tests check the crossover function only; they do not verify market data quality, order handling, or profitability.
+
+## 6. Run the bot without orders first
+
+Run a signal-only pass:
+
+```powershell
+.\.venv\Scripts\python.exe paper_bot.py --symbol SPY
+```
+
+The program should print the symbol, timestamp of the last included bar, close, and one of `BUY`, `SELL`, or `HOLD`. Without `--submit-paper-order`, it will not place an order. If there are too few bars, if the symbol is unavailable, or if credentials are invalid, it should stop with an error instead of inventing a signal.
+
+The signal may be `HOLD` most of the time. That is normal for a crossover rule: it only returns `BUY` or `SELL` when the fast average crosses the slow average between the prior and current windows. A signal is not a prediction of future returns.
+
+## 7. Allow a one-share paper order only after review
+
+Only after reviewing the code and seeing the test suite pass, you can run:
+
+```powershell
+.\.venv\Scripts\python.exe paper_bot.py --symbol SPY --submit-paper-order
+```
+
+This option may submit a one-share **paper** market order if the latest completed-bar signal, account position, recorded demo state, and market-open check all permit it. After submission, the script polls the order for up to 30 seconds and updates `bot_state.json` only when the broker reports a full one-share fill. A rejection, cancellation, partial fill, inconsistent filled quantity, or timeout leaves the intended position state unsaved. Inspect the paper account and reconcile the order before running the script again; the example never retries an uncertain order automatically.
+
+Use a dedicated paper account with no unrelated positions in the symbol. The example intentionally stops if it finds an unexpected position or a mismatch between its small local state file and the broker account. Resolve any mismatch manually before running it again. Do not schedule the script to run unattended at this stage, and do not change `paper=True` to `paper=False`.
+
+## 8. Use Claude Code as a developer, not as the trading authority
+
+Once you have created the three files, start Claude Code from the project directory. Ask it to inspect the project and review the implementation before asking for new features. Anthropic's [Claude Code documentation](https://code.claude.com/docs/en/getting-started) describes setup and project sessions; the [CLI reference](https://code.claude.com/docs/en/cli-usage) documents command-line usage.
+
+Use prompts one stage at a time. For example:
+
+**Prompt 1 — Inspect, don't edit**
+
+> Inspect `paper_bot.py`, `test_signals.py`, `.env.example` if present, and `.gitignore`. Explain the control flow, identify possible API or state-handling bugs, and list tests that are missing. Do not edit files, read secret values, connect to Alpaca, or submit orders.
+
+**Prompt 2 — Add tests only**
+
+> Add unit tests for the crossover function's boundary conditions and invalid input. Do not change `paper_bot.py` unless you first explain why a change is essential. Do not read `.env`, contact any API, submit orders, or execute trading actions. Run only the local test suite and summarize the results.
+
+**Prompt 3 — Review paper-order safety**
+
+> Review the paper-order path for duplicate submissions, position mismatches, failed requests, and unsafe assumptions. Do not submit orders or access the account. Report findings first; wait for approval before changing code.
+
+Do not ask Claude to “make the bot profitable.” It can help implement and test defined logic, but it cannot manufacture a trading edge by changing parameters until a backtest looks good. Any change to strategy rules should be specified, tested on data not used to tune the rules, and documented.
+
+## 9. Understand what this prototype does not prove
+
+Alpaca describes paper trading as a simulation. Its paper environment does not fully reproduce factors such as market impact, latency slippage, queue position for limit orders, price improvement, regulatory fees, or dividends. IEX data is also not the same as a consolidated view of every US venue. Read the current [paper-trading limitations](https://docs.alpaca.markets/us/docs/paper-trading) before interpreting results.
+
+This starter does not implement a full backtester, stop-loss logic, portfolio-wide exposure limits, continuous scheduling, alerting, or robust order reconciliation. It also does not demonstrate positive expected returns. Those are separate engineering and research steps, not automatic upgrades to add without testing.
+
+Before making a bot persistent, develop and test at least:
+
+- Data checks for missing, duplicate, stale, and out-of-order bars.
+- Idempotent order handling and recovery after a timeout or restart.
+- Position and open-order reconciliation against the broker.
+- Explicit exposure and loss limits, with fail-closed behavior.
+- Logs, alerts, a manual stop mechanism, and an incident-recovery plan.
+- Backtests that account for fees, spread, slippage, and look-ahead bias.
+
+The detailed [Trading Bot Architecture](/trading-bots/trading-bot-architecture/), [Trading Bot APIs](/trading-bots/trading-bot-apis/), [Testing Trading Bots](/trading-bots/testing-trading-bots/), [Trading Bot Risk Management](/trading-bots/trading-bot-risk-management/), and [Monitoring Trading Bots](/trading-bots/monitoring-trading-bots/) guides cover those additional topics.
+
+## Frequently asked questions
+
+### Does Claude Code make the trading decisions?
+
+Not in this example. Claude Code helps write and review the program. The running script uses explicit moving-average rules written in Python. This separation makes it easier to inspect what generated each signal.
+
+### Does the example place real orders?
+
+No. The code requires `PAPER_TRADING=true` and constructs the trading client with `paper=True`. It does not have a live-trading mode. Keep live credentials out of the project.
+
+### Why use a moving-average crossover?
+
+It is a small, explainable example of turning market data into a deterministic signal. It is not selected because it is known to be profitable. A production strategy needs separate research and out-of-sample validation.
+
+### Can I leave the script running automatically?
+
+Not yet. This tutorial runs one check per command. Before scheduling repeated checks, add and test stronger duplicate-order protection, reconciliation, monitoring, and a safe stop mechanism. Automatic scheduling should come after those controls, not before.
+
+### Why can a paper result differ from live trading?
+
+Simulators make assumptions about fills and market behavior. Real execution can be affected by liquidity, spreads, queue position, latency, fees, and market impact. Paper trading is useful for debugging integration and operational behavior; it does not prove expected live returns.
+
+## Conclusion: build a small bot you can explain
+
+The most useful way to create a trading bot with Claude Code is to make each step inspectable. Start with a defined rule, fetch and validate data, test the signal calculation offline, review every change, and keep orders disabled unless you deliberately enable the paper-trading path. Check the broker's paper dashboard after any attempted order and investigate state mismatches instead of retrying blindly.
+
+The point of the first version is not to earn money. It is to build software whose inputs, rules, outputs, and limitations you understand. Only expand it after the small version behaves as expected in tests and controlled paper runs.
+
+*Educational content only; not financial or investment advice. Trading involves risk, and neither AI-generated code nor simulated results guarantee profit.*
+''',
+        "meta_title": 'How to Create a Trading Bot with Claude Code | Real AI Trader',
+        "meta_description": 'Build a simple Python trading bot with Claude Code and Alpaca paper trading. Follow setup, moving-average signals, safety checks, tests, and API steps.'
+    },
+    {
         "title": "What Is Algorithmic Trading?",
         "slug": "what-is-algorithmic-trading",
         "category": "algorithmic-trading",
@@ -3782,6 +4212,179 @@ ARTICLES = [
         "meta_description": "Evaluate trading bot platforms by supported markets, integrations, testing, controls, monitoring, pricing, documentation, and limitations."
     },
     {
+        "title": "Market Data Feed Providers: How to Compare Options",
+        "slug": "market-data-feed-providers",
+        "category": "reviews",
+        "author": AUTHOR["name"],
+        "date": "2026-10-13",
+        "updated": "2026-10-13",
+        "excerpt": "Compare market data feed providers by the markets and products they document, delivery options, data timing, licensing, pricing, and limitations.",
+        "image": "https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=80",
+        "image_alt": "A data analytics dashboard displaying charts on a computer screen",
+        "allow_external_links": True,
+        "exclude_from_auto_related": True,
+        "tags": ["market data feed providers", "stock market data feed providers", "market data feeds", "reviews"],
+        "related_articles": ["market-data-feeds-for-trading", "trading-apis-explained", "trading-platform-costs-and-fees"],
+        "sections": [
+            {
+                "heading": "Choose a provider for the job you actually need",
+                "body": [
+                    "Choosing among market data feed providers starts with the intended use, not a brand name. Whether you are comparing market data feed providers or stock market data feed providers, define the data product, timing, and rights the job requires. A researcher building a historical dataset, a developer powering a current-price screen, a systematic trader evaluating event timing, and a business redistributing information need different coverage, delivery, and permissions. One service may provide a convenient API for selected datasets; another may offer a defined exchange product through an authorized distributor. Neither label alone establishes suitability.",
+                    "This is a provider-selection guide, not another introduction to feed concepts. Our [Market Data Feeds for Trading Systems](/trading-technology/market-data-feeds-for-trading/) guide explains feed types, timestamps, and data-handling basics. Here the focus is how to compare actual options, identify unknowns, and verify that a service's documented offer matches your workflow."
+                ]
+            },
+            {
+                "heading": "Three different ways to obtain market data",
+                "body": [
+                    "An API-based data service exposes selected data through software endpoints, downloadable files, or both. It may bundle products from different publishers or markets. Coverage, update frequency, history, request limits, and charges can therefore vary by endpoint, product, plan, or dataset. Check the documentation for the exact product you expect to use rather than extrapolating from a provider's full catalog.",
+                    "A direct exchange feed is a delivery arrangement for information distributed by a venue under that venue's technical and licensing rules. It may be relevant when an organization needs a defined exchange product or a controlled delivery path. Direct does not mean simple: connectivity, entitlement, redistribution, display, and reporting responsibilities still need to be understood.",
+                    "A licensed distributor or redistributor provides exchange data under an arrangement with the exchange. This can be a practical route when the required market product is available through a distributor's service and the contract fits the intended display or use. The [CME Group distributor directory](https://www.cmegroup.com/market-data/license-data/licensed-market-data-distributors.html) and the [London Stock Exchange licensed-redistributors page](https://www.londonstockexchange.com/equities-trading/market-data/licensed-redistributors) are starting points for checking authorized routes; confirm the specific product and permissions with the exchange and provider."
+                ]
+            },
+            {
+                "heading": "A comparison of provider types and named options",
+                "body": [
+                    "The table separates facts visible in the official sources checked for this article from information that still needs confirmation. It is not a quality ranking. Timing, coverage, plans, and terms can differ within each provider's catalog; ask for the exact product documentation and applicable agreement before relying on a summary."
+                ],
+                "comparison_table": {
+                    "caption": "Market data feed provider comparison (information checked 2026-10-13)",
+                    "headers": ["Provider or route; possible fit", "Markets and timing", "Delivery", "Public pricing checked", "Restrictions and open questions"],
+                    "rows": [
+                        [
+                            "Nasdaq Data Link; researchers needing API access to catalogued datasets",
+                            "Financial, economic, and alternative data products are listed; coverage, history, and freshness depend on the dataset.",
+                            "API access described by Nasdaq Data Link; confirm the interface, format, limits, and update schedule for each dataset.",
+                            "No single catalog-wide price verified; inspect the individual dataset listing.",
+                            "Dataset terms and source-specific rights vary. Confirm intended use, permitted users, retention, and redistribution terms."
+                        ],
+                        [
+                            "Tiingo; developers evaluating a stock-data API service",
+                            "The official pricing page was not extractable in a form that verified specific market, real-time, or historical entitlements for this review.",
+                            "Check the current official endpoint documentation for required API and delivery methods.",
+                            "Specific current plan prices could not be verified from the accessible official page.",
+                            "Verify plan limits, source/venue, freshness, commercial use, display rights, and redistribution directly before selection."
+                        ],
+                        [
+                            "Alpha Vantage; API users comparing documented stock-data endpoints",
+                            "Its stock API page describes equity data; the docs distinguish intraday and historical functions. US intraday real-time, delayed, and extended-history access has separate premium entitlement conditions.",
+                            "API endpoints documented with JSON and CSV output options for supported functions.",
+                            "The official premium page lists a monthly tier starting at $49.99 for 75 requests per minute; annual and higher request-rate tiers are also shown.",
+                            "The documentation describes the standard limit as 25 requests per day and says commercial use requires contacting sales. Premium membership alone should not be treated as universal market-data permission."
+                        ],
+                        [
+                            "Intrinio; teams comparing individual or startup data plans",
+                            "Specific products and entitlement details must be checked against the selected plan and feed; not inferred from the plan name.",
+                            "Plan and product pages should be checked for the exact API, file, or other delivery methods included.",
+                            "Official plan-page titles displayed $150/month for Individual and “from $999/qtr” for Startup on the check date.",
+                            "Verify what each price includes, eligible users, exchange charges, commercial/display scope, and any redistribution license in the current offer."
+                        ],
+                        [
+                            "Direct exchange feed or licensed distributor; organizations needing a defined exchange product or permissions",
+                            "Specific exchange, instruments, timing, and history depend on the feed/product and entitlement.",
+                            "Delivery is contract- and product-specific; ask about the technical connection and operational requirements.",
+                            "No comparable general price verified; seek a quote for the required market and use.",
+                            "Confirm exchange entitlements, display and non-display classifications, reporting, redistribution, and onward-user terms."
+                        ]
+                    ]
+                },
+                "body_after_list": [
+                    "These entries are starting points, not interchangeable packages. Nasdaq Data Link's [API overview](https://data.nasdaq.com/tools/api) presents API access to a broad catalog; Alpha Vantage's [documentation](https://www.alphavantage.co/documentation/) and [stock API page](https://www.alphavantage.co/stock_api_landing/) describe endpoint and access conditions; Intrinio's [Individual](https://account.intrinio.com/pricing/individual) and [Startup](https://account.intrinio.com/pricing/startup) pages show plan-price headings. The [Tiingo pricing page](https://www.tiingo.com/about/pricing) did not expose verifiable tier details during this check, so this article makes no price or entitlement claim for it."
+                ]
+            },
+            {
+                "heading": "How to assess each option",
+                "subsections": [
+                    {
+                        "heading": "Start with instruments, markets, and data definitions",
+                        "body": [
+                            "List the exchanges, asset classes, symbols, and fields your application needs. Specify whether you need trades, quotes, order-book depth, bars, corporate actions, reference data, or another product. Then verify coverage at the level that matters: a provider's broad label such as “equities” does not prove that every venue, instrument, field, or entitlement is included. Ask how symbols and market identifiers are mapped and whether data is consolidated or venue-specific.",
+                            "For each candidate, make a small coverage matrix using the provider's product documentation. Mark a field as verified only when the source states it for the relevant plan or dataset. Leave gaps as questions. This avoids comparing a provider's complete catalog with another provider's one subscription."
+                        ]
+                    },
+                    {
+                        "heading": "Separate real-time, delayed, and historical access",
+                        "body": [
+                            "Treat timing as a product entitlement, not a marketing adjective. “Real-time” may describe a particular market, endpoint, account, or licensed tier; a service may also offer delayed observations and historical records under different terms. Record the stated delay, whether the service provides a live stream or periodic snapshots, which session hours are included, and whether historical bars and tick-level data are separate products.",
+                            "The Alpha Vantage documentation is a concrete reminder: it identifies premium intraday functions and additional entitlement steps for certain US real-time or delayed data. Confirm what your account actually receives and whether its terms fit your use. Historical availability also needs careful definition: check the start date, granularity, adjustment policy, correction handling, and whether access is continuous for your instruments."
+                        ]
+                    },
+                    {
+                        "heading": "Match delivery and API behavior to your architecture",
+                        "body": [
+                            "Determine whether the required data arrives through REST requests, a streaming protocol, files, a direct feed, or a combination. Verify supported formats, authentication, rate limits, connection limits, pagination, message schemas, maintenance windows, and how the provider signals errors or stale data. Use the [Trading APIs Explained](/trading-technology/trading-apis-explained/) guide for general API concepts; this comparison is about the particular provider's documented interface.",
+                            "Latency should be measured for the whole path you will operate, not assumed from a protocol name or provider category. Ask for documented service objectives and test access, then measure the stages that matter to your workflow: source timestamp, receipt time, parsing, internal distribution, and recovery after a disconnect. No source checked here supports a universal latency or reliability ranking."
+                        ]
+                    },
+                    {
+                        "heading": "Review evidence of service quality and developer support",
+                        "body": [
+                            "Look for a public status page, incident history, service-level commitments, maintenance notices, support channels, and documentation of recovery behavior. Record what is actually promised and what remains descriptive. A displayed uptime number without a defined measurement window, exclusions, or remedy is not enough to compare providers.",
+                            "Before committing, test the exact endpoints and instruments in a trial, sandbox, or evaluation environment if one is offered. Check whether test data is representative, whether production entitlements differ, and what happens when request quotas or connection limits are reached. Sample responses should be validated against the documented schema and your own requirements, not treated as proof of complete coverage."
+                        ]
+                    },
+                    {
+                        "heading": "Treat licensing and redistribution as core requirements",
+                        "body": [
+                            "An API subscription does not automatically grant the right to show data to customers, publish it on a website, share it across an organization, or redistribute raw or derived values. Personal use, internal commercial use, display, non-display use, derived works, and redistribution may be treated differently by the service and the underlying exchange. Ask which legal entity grants each permission and whether separate exchange agreements, user declarations, audit records, or fees apply.",
+                            "Put your proposed workflow in writing when you ask for terms: who will access the data, whether it will be displayed, whether end users can export or query it, whether outputs leave your organization, and how long data is retained. Read the applicable provider agreement and exchange rules rather than relying on a sales summary. For operational connection questions, see [Trading System Connectivity](/trading-technology/trading-system-connectivity/); for costs beyond a headline subscription, see [Trading Platform Costs and Fees Explained](/reviews/trading-platform-costs-and-fees/)."
+                        ]
+                    },
+                    {
+                        "heading": "Calculate total cost for your actual use",
+                        "body": [
+                            "Compare the full bill, not just the visible monthly plan. Depending on the service, relevant costs may include dataset subscriptions, exchange or entitlement charges, non-display fees, additional users, API overages, connectivity, storage, support, and compliance administration. This list is a set of questions, not a claim that every provider charges each item. Request an itemized quote that states the market, plan, use, billing period, and any assumptions.",
+                            "Recheck the quote against your expected volume and number of users. A tier that appears inexpensive for evaluation can differ from one suitable for production or commercial display. Prices and terms change, so capture the source and date and verify them before signing."
+                        ]
+                    }
+                ]
+            },
+            {
+                "heading": "Common mistakes when comparing market data feeds",
+                "bullet_list": [
+                    ["Treating delayed as real-time", "Check the endpoint's stated delay, exchange entitlement, account status, and actual receipt timestamps. Do not infer freshness from a chart or product name."],
+                    ["Assuming one API means one uniform product", "A catalog can contain datasets with different publishers, coverage, frequencies, formats, prices, and terms. Inspect the exact product and plan."],
+                    ["Assuming a displayed price includes exchange fees", "Ask for itemized charges for your market, user classification, and workflow. A provider's subscription page may not settle exchange or redistribution costs."],
+                    ["Equating API access with permission to publish", "Get explicit confirmation for display, commercial use, derived output, and redistribution. A personal-use plan may not cover a business workflow."],
+                    ["Using broad claims as reliability evidence", "Request relevant service terms, status history, incident handling, and a test opportunity. Avoid unsourced comparisons or latency rankings."],
+                    ["Choosing before testing coverage", "Validate the required symbols, fields, timestamps, history, and corrections with sample data. A generic asset list is not a substitute."]
+                ]
+            },
+            {
+                "heading": "A practical provider-selection checklist",
+                "body": [
+                    "Before choosing a provider, write down the requirement and its evidence for each item:"
+                ],
+                "bullet_list": [
+                    ["Market scope", "Which venues, instruments, fields, and sessions must be covered?"],
+                    ["Timing and history", "Is data real-time, delayed, or historical; what granularity and date range are documented?"],
+                    ["Delivery", "Which API, feed, file format, limits, and recovery behavior fit the architecture?"],
+                    ["Quality evidence", "What status information, service commitments, test access, and incident documentation are available?"],
+                    ["Rights", "Do written terms cover every user, display, internal use, derived output, and redistribution case?"],
+                    ["Total cost", "What provider, exchange, usage, connectivity, and administrative charges are included or excluded?"],
+                    ["Unresolved items", "Which claims still need written confirmation from the provider or exchange?"]
+                ],
+                "body_after_list": [
+                    "Keep the source URL and date next to each answer. If an important condition is missing, classify the option as unverified rather than assuming the most favorable interpretation."
+                ]
+            },
+            {
+                "heading": "Conclusion: match the provider type to the requirement",
+                "body": [
+                    "For research that needs selected catalogued datasets, an API marketplace such as Nasdaq Data Link may be worth evaluating dataset by dataset. Developers comparing stock-market APIs can examine Tiingo, Alpha Vantage, and Intrinio, but should verify the exact endpoint, entitlement, pricing, and usage rights rather than selecting from brand-level summaries. Organizations needing a defined exchange product or broader display and redistribution permissions should compare direct exchange and licensed-distributor routes and confirm the applicable agreement.",
+                    "There is no universal best market data feed provider. The useful choice is the option whose documented coverage, timing, delivery, evidence, permissions, and total cost match your actual workflow. For broader product context, browse the [Reviews hub](/reviews/); for an educational overview of feed concepts, return to [Market Data Feeds for Trading Systems](/trading-technology/market-data-feeds-for-trading/)."
+                ]
+            },
+            {
+                "heading": "Sources and information checked",
+                "body": [
+                    "Provider and exchange source pages were checked on 2026-10-13. Official starting points: [Nasdaq Data Link API](https://www.nasdaq.com/products/data/data-link/api) and [API overview](https://data.nasdaq.com/tools/api); [Tiingo pricing](https://www.tiingo.com/about/pricing); [Alpha Vantage documentation](https://www.alphavantage.co/documentation/), [stock API](https://www.alphavantage.co/stock_api_landing/), and [premium plans](https://www.alphavantage.co/premium/); [Intrinio pricing](https://intrinio.com/pricing), [Individual plan](https://account.intrinio.com/pricing/individual), and [Startup plan](https://account.intrinio.com/pricing/startup); [London Stock Exchange licensed redistributors](https://www.londonstockexchange.com/equities-trading/market-data/licensed-redistributors); and [CME Group licensed market-data distributors](https://www.cmegroup.com/market-data/license-data/licensed-market-data-distributors.html). Some pages were dynamically rendered or did not expose plan details in the accessible response. Where that prevented verification, the article says so and does not infer the missing terms."
+                ]
+            }
+        ],
+        "meta_title": "Market Data Feed Providers: How to Compare Options | Real AI Trader",
+        "meta_description": "Compare market data feed providers by market coverage, delivery, historical depth, API access, licensing, pricing, and documented limitations."
+    },
+    {
         "title": "Evaluating Crypto Trading Platforms",
         "slug": "evaluating-crypto-trading-platforms",
         "category": "reviews",
@@ -4475,7 +5078,7 @@ def related_articles(article):
     same_category = recent_articles(ARTICLES_BY_CATEGORY.get(article["category"], []))
     candidates = same_category + recent_articles(ARTICLES)
     for related in candidates:
-        if related["slug"] != article["slug"] and related not in selected:
+        if related["slug"] != article["slug"] and not related.get("exclude_from_auto_related", False) and related not in selected:
             selected.append(related)
         if len(selected) == 3:
             break
@@ -4491,16 +5094,116 @@ def render_category_intro(category):
     return rendered
 
 
-def render_inline_content(text):
-    link_pattern = re.compile(r"\[([^\]]+)\]\((/[^)\s]+)\)")
+def render_inline_content(text, allow_external_links=False):
+    link_target = r"(?:/(?!/)[^)\s]+|https?://[^)\s]+)" if allow_external_links else r"/(?!/)[^)\s]+"
+    link_pattern = re.compile(r"\[([^\]]+)\]\((" + link_target + r")\)")
     parts = []
     last_index = 0
     for match in link_pattern.finditer(text):
         parts.append(escape(text[last_index:match.start()]))
-        parts.append(f'<a href="{escape(match.group(2), quote=True)}">{escape(match.group(1))}</a>')
+        href = escape(match.group(2), quote=True)
+        external = match.group(2).startswith(("http://", "https://"))
+        rel = ' rel="noopener noreferrer"' if external else ""
+        parts.append(f'<a href="{href}"{rel}>{escape(match.group(1))}</a>')
         last_index = match.end()
     parts.append(escape(text[last_index:]))
     return "".join(parts)
+
+
+def render_markdown_inline(text, allow_external_links=False):
+    code_spans = []
+
+    def preserve_code(match):
+        code_spans.append(f"<code>{escape(match.group(1))}</code>")
+        return f"\x00CODE{len(code_spans) - 1}\x00"
+
+    rendered = render_inline_content(re.sub(r"`([^`]+)`", preserve_code, text), allow_external_links)
+    rendered = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", rendered)
+    rendered = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"<em>\1</em>", rendered)
+    for index, code in enumerate(code_spans):
+        rendered = rendered.replace(f"\x00CODE{index}\x00", code)
+    return rendered
+
+
+def render_markdown_body(markdown, allow_external_links=False):
+    lines = markdown.splitlines()
+    sections = []
+    section_blocks = []
+    index = 0
+
+    def finish_section():
+        if section_blocks:
+            sections.append(f'<section class="article-section">{"".join(section_blocks)}</section>')
+            section_blocks.clear()
+
+    def is_block_start(line):
+        return (
+            line.startswith("```")
+            or re.match(r"^#{2,6}\s+", line)
+            or re.match(r"^\s*[-*]\s+", line)
+            or re.match(r"^\s*\d+[.)]\s+", line)
+            or line.startswith("> ")
+        )
+
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip():
+            index += 1
+            continue
+        if line.startswith("```"):
+            language = line[3:].strip()
+            index += 1
+            code_lines = []
+            while index < len(lines) and not lines[index].startswith("```"):
+                code_lines.append(lines[index])
+                index += 1
+            if index == len(lines):
+                raise ValueError("Unclosed fenced code block in article Markdown")
+            index += 1
+            language_class = f' class="language-{escape(language, quote=True)}"' if re.fullmatch(r"[A-Za-z0-9_-]+", language) else ""
+            section_blocks.append(f"<pre><code{language_class}>{escape(chr(10).join(code_lines))}</code></pre>")
+            continue
+        heading = re.match(r"^(#{2,6})\s+(.+?)\s*#*\s*$", line)
+        if heading:
+            level = "h2" if len(heading.group(1)) == 2 else "h3"
+            if level == "h2":
+                finish_section()
+            section_blocks.append(f"<{level}>{render_markdown_inline(heading.group(2), allow_external_links)}</{level}>")
+            index += 1
+            continue
+        if re.match(r"^\s*[-*]\s+", line):
+            items = []
+            while index < len(lines) and re.match(r"^\s*[-*]\s+", lines[index]):
+                item = re.sub(r"^\s*[-*]\s+", "", lines[index], count=1)
+                items.append(f"<li>{render_markdown_inline(item, allow_external_links)}</li>")
+                index += 1
+            section_blocks.append("<ul>" + "".join(items) + "</ul>")
+            continue
+        if re.match(r"^\s*\d+[.)]\s+", line):
+            items = []
+            while index < len(lines) and re.match(r"^\s*\d+[.)]\s+", lines[index]):
+                item = re.sub(r"^\s*\d+[.)]\s+", "", lines[index], count=1)
+                items.append(f"<li>{render_markdown_inline(item, allow_external_links)}</li>")
+                index += 1
+            section_blocks.append("<ol>" + "".join(items) + "</ol>")
+            continue
+        if line.startswith("> "):
+            quote_lines = []
+            while index < len(lines) and lines[index].startswith("> "):
+                quote_lines.append(lines[index][2:])
+                index += 1
+            quote = " ".join(part.strip() for part in quote_lines)
+            section_blocks.append(f"<blockquote><p>{render_markdown_inline(quote, allow_external_links)}</p></blockquote>")
+            continue
+
+        paragraph = [line.strip()]
+        index += 1
+        while index < len(lines) and lines[index].strip() and not is_block_start(lines[index]):
+            paragraph.append(lines[index].strip())
+            index += 1
+        section_blocks.append(f"<p>{render_markdown_inline(' '.join(paragraph), allow_external_links)}</p>")
+    finish_section()
+    return "".join(sections)
 
 
 def jsonld_string(data):
@@ -4909,30 +5612,45 @@ def render_category_page(category_slug):
 
 def render_article_page(article):
     category = get_category(article['category'])
-    has_article_disclaimer = any(section.get("disclaimer") for section in article["sections"])
-    blocks = []
-    for section in article['sections']:
-        heading = ""
-        if section.get("heading"):
-            tag = "h3" if section.get("subsection") else "h2"
-            heading = f'<{tag}>{escape(section["heading"])}</{tag}>'
-        body = ''.join(f'<p>{render_inline_content(p)}</p>' for p in section.get('body', []))
-        subsections = []
-        for subsection in section.get("subsections", []):
-            subheading = f'<h3>{escape(subsection["heading"])}</h3>'
-            subbody = ''.join(f'<p>{render_inline_content(p)}</p>' for p in subsection.get("body", []))
-            subsections.append(subheading + subbody)
-        lists = []
-        for key, tag in (("ordered_list", "ol"), ("bullet_list", "ul")):
-            if section.get(key):
-                items = ''.join(
-                    f'<li><strong>{escape(label)}.</strong> {render_inline_content(description)}</li>'
-                    for label, description in section[key]
+    allow_external_links = article.get("allow_external_links", False)
+    sections = article.get("sections", [])
+    has_article_disclaimer = any(section.get("disclaimer") for section in sections)
+    if article.get("markdown_body") is not None:
+        blocks = [render_markdown_body(article["markdown_body"], allow_external_links)]
+    else:
+        blocks = []
+        for section in sections:
+            heading = ""
+            if section.get("heading"):
+                tag = "h3" if section.get("subsection") else "h2"
+                heading = f'<{tag}>{escape(section["heading"])}</{tag}>'
+            body = ''.join(f'<p>{render_inline_content(p, allow_external_links)}</p>' for p in section.get('body', []))
+            subsections = []
+            for subsection in section.get("subsections", []):
+                subheading = f'<h3>{escape(subsection["heading"])}</h3>'
+                subbody = ''.join(f'<p>{render_inline_content(p, allow_external_links)}</p>' for p in subsection.get("body", []))
+                subsections.append(subheading + subbody)
+            lists = []
+            for key, tag in (("ordered_list", "ol"), ("bullet_list", "ul")):
+                if section.get(key):
+                    items = ''.join(
+                        f'<li><strong>{escape(label)}.</strong> {render_inline_content(description, allow_external_links)}</li>'
+                        for label, description in section[key]
+                    )
+                    lists.append(f'<{tag}>{items}</{tag}>')
+            table = ""
+            if section.get("comparison_table"):
+                comparison = section["comparison_table"]
+                headers = ''.join(f'<th scope="col">{escape(header)}</th>' for header in comparison["headers"])
+                rows = ''.join(
+                    '<tr>' + ''.join(f'<td>{render_inline_content(cell, allow_external_links)}</td>' for cell in row) + '</tr>'
+                    for row in comparison["rows"]
                 )
-                lists.append(f'<{tag}>{items}</{tag}>')
-        after_list = ''.join(f'<p>{render_inline_content(p)}</p>' for p in section.get('body_after_list', []))
-        section_class = "article-section financial-disclaimer" if section.get("disclaimer") else "article-section"
-        blocks.append(f'<section class="{section_class}">{heading}{body}{"".join(lists)}{after_list}{"".join(subsections)}</section>')
+                caption = f'<caption>{escape(comparison["caption"])}</caption>' if comparison.get("caption") else ""
+                table = f'<table>{caption}<thead><tr>{headers}</tr></thead><tbody>{rows}</tbody></table>'
+            after_list = ''.join(f'<p>{render_inline_content(p, allow_external_links)}</p>' for p in section.get('body_after_list', []))
+            section_class = "article-section financial-disclaimer" if section.get("disclaimer") else "article-section"
+            blocks.append(f'<section class="{section_class}">{heading}{body}{"".join(lists)}{table}{after_list}{"".join(subsections)}</section>')
     related = related_articles(article)
     contextual_article = related[0] if related else None
     related_markup = "".join(f'''
@@ -5139,9 +5857,11 @@ def validate_content():
     for article in ARTICLES:
         if article["category"] not in CATEGORIES_BY_SLUG:
             raise ValueError(f"Unknown category for article {article['slug']}: {article['category']}")
-        for required in ("title", "excerpt", "image", "author", "date", "updated", "meta_title", "meta_description", "sections"):
+        for required in ("title", "excerpt", "image", "author", "date", "updated", "meta_title", "meta_description"):
             if not article.get(required):
                 raise ValueError(f"Article {article['slug']} is missing {required}")
+        if not article.get("sections") and not article.get("markdown_body"):
+            raise ValueError(f"Article {article['slug']} requires sections or markdown_body")
         for slug in article.get("related_articles", []):
             if slug not in ARTICLES_BY_SLUG:
                 raise ValueError(f"Unknown related article for {article['slug']}: {slug}")
